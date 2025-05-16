@@ -108,28 +108,61 @@ export async function doLogin(): Promise<void> {
   console.log(`🖼️ Uploaded image from URL: ${imageUrl}`);
 
   // … hoặc với buffer từ URL như trước …
+  await inputHandle.uploadFile(tempFilePath);
+  console.log('🖼️ File đã được chọn, sẵn sàng upload');
+
+
+  const [uploadResponse] = await Promise.all([
+    page.waitForResponse(response =>
+      response.url().endsWith('/api/seller/campaign/update_tmp_files') &&
+      response.request().method() === 'POST' &&
+      response.status() === 200
+      , { timeout: 10000 }),
+  ]);
+
+  console.log(`✅ Upload API trả về ${uploadResponse.status()} — upload đã hoàn tất`);
+
+  await page.waitForSelector(
+    'button.btnContinuePricing:not([disabled])',
+    { visible: true, timeout: 6000 }
+  );
+
   try {
-    await page.waitForSelector('.upload-success-toast', { timeout: 15000 });
-    console.log('🎉 Upload thành công');
-  } catch {
-    console.log('⚠️ Có thể upload thành công nhưng không thấy toast');
+    const continueBtn = await page.$('button.btnContinuePricing:not([disabled])');
+    if (!continueBtn) {
+      throw new Error('Continue button không tìm thấy sau 6s');
+    }
+    await continueBtn.click();
+  } catch (error) {
+    throw new Error('Continue button không tìm thấy sau 6s');
   }
 
+  await page.waitForSelector('input.inputSellPrice', {
+    visible: true,
+    timeout: 6000
+  });
 
+  // 2. Lấy handle & focus vào ô giá
+  const priceInput = await page.$('input.inputSellPrice');
+  const raw = '19.93$';
+  const cleaned = raw.replace(/[^\d.]/g, ''); // '19.93'
+  if (!priceInput) throw new Error('Không tìm thấy input giá');
 
+  await priceInput.evaluate(el =>
+    (el as HTMLElement).scrollIntoView({ block: 'center', inline: 'center' })
+  );
+  await priceInput.click();
+  await page.screenshot({ path: 'debug.png', fullPage: true });
 
+  await new Promise(resolve => setTimeout(resolve, 100));
 
-  // const continuePricingBtn = 'button.btn.btn-primary.float-right.btnContinuePricing';
-  // await page.waitForSelector(continuePricingBtn, { visible: true, timeout: 10000 });
-  // await page.click(continuePricingBtn);
-  // console.log('▶️ Clicked Continue Pricing');
-  //
-  // // 13. Điền giá sell price = 19.95
-  // const priceInput = 'input.inputSellPrice';
-  // await page.waitForSelector(priceInput, { visible: true, timeout: 10000 });
-  // await page.click(priceInput, { clickCount: 3 });
-  // await page.type(priceInput, '19.95');
-  // console.log('▶️ Set sell price to 19.95');
+  await page.keyboard.down('Control');
+  await page.keyboard.press('A');
+  await page.keyboard.up('Control');
+  await page.keyboard.press('Backspace');
+  await priceInput.type(cleaned);
+  console.log('💲 Giá đã được nhập: 19.93');
+
   await new Promise(r => setTimeout(r, 10000));
   await browser.close();
 }
